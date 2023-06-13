@@ -3,12 +3,29 @@ import * as dotenv from 'dotenv';
 import cors from 'cors';
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 import jwt from "jsonwebtoken";
+import SlowDown from "express-slow-down";
 
 const app = express();
 const port = process.env.PORT || 5000;
 dotenv.config();
 app.use( express.json() );
 app.use( cors() );
+
+// ? -------------------------------Speed Limiter Start------------------------------
+// const speedLimiter = SlowDown( {
+    //     windowMs: 60 * 100,
+//     delayAfter: 0,
+//     delayMs: 500
+// } );
+
+// app.use( speedLimiter );
+
+// Middleware function to introduce a delay
+const delayMiddleware = ( req, res, next ) => {
+    const delay = 1000; // Delay in milliseconds (adjust as needed)
+    setTimeout( next, delay );
+};
+// ? -------------------------------Speed Limiter End-------------------
 
 
 // ! ================================ JWT Auth Start =================================
@@ -53,6 +70,7 @@ const run = async () => {
         const classesCollection = db.collection( "classes" );
         const usersCollection = db.collection( "users" );
 
+        // ? Retrieve classes with 'quantity' query. Get all if 'quantity' is not provided
         app.get( '/classes', async ( req, res ) => {
             const { quantity } = req.query;
             if ( quantity ) {
