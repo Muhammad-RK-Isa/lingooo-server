@@ -160,14 +160,13 @@ const run = async () => {
                 const classes = await classesCollection.find( { 'instructor.uid': uid } ).toArray();
                 const languageNames = [ ...new Set( classes.map( ( classData ) => classData.language ) ) ];
                 const flags = await flagsCollection.find( { name: { $in: languageNames } } ).limit( 2 ).project( { _id: 0, image: 1 } ).toArray();
-                res.send( flags );
+                const flagImageLinks = flags.map( ( flag ) => flag.image );
+                res.send( flagImageLinks );
             } catch ( error ) {
                 console.error( 'Error retrieving flags:', error );
                 res.status( 500 ).json( { error: 'Failed to retrieve flags' } );
             }
         } );
-
-
 
         // Send a ping to confirm a successful connection
         await client.db( "admin" ).command( { ping: 1 } );
