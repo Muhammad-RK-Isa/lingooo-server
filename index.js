@@ -136,20 +136,34 @@ const run = async () => {
         // ? Get flag by name
         app.get( '/flags/single/:name', async ( req, res ) => {
             const { name } = req.params;
-            
+
             const pipeline = [
                 { $match: { name } },
                 { $project: { _id: 0, image: 1 } }
             ];
 
             const result = await flagsCollection.aggregate( pipeline ).toArray();;
-            console.log( result );
 
             if ( result.length > 0 ) {
                 const { image } = result[ 0 ];
                 res.send( image );
             } else {
                 res.status( 404 ).json( { error: 'Flag not found' } );
+            }
+        } );
+
+
+        // ? Get all flags according to an instructor's classes' languages
+        app.get( '/flags/instructor/:uid', async ( req, res ) => {
+            const { uid } = req.params;
+            try {
+                const classes = await classesCollection.find( { 'instructor.uid': uid } ).toArray();
+                const languageNames = [ ...new Set( classes.map( ( classData ) => classData.language ) ) ];
+                const flags = await flagsCollection.find( { name: { $in: languageNames } } ).limit( 2 ).project( { _id: 0, image: 1 } ).toArray();
+                res.send( flags );
+            } catch ( error ) {
+                console.error( 'Error retrieving flags:', error );
+                res.status( 500 ).json( { error: 'Failed to retrieve flags' } );
             }
         } );
 
