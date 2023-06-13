@@ -69,6 +69,7 @@ const run = async () => {
         const db = client.db( "lingooo" );
         const classesCollection = db.collection( "classes" );
         const usersCollection = db.collection( "users" );
+        const flagsCollection = db.collection( "flags" );
 
         // ? Retrieve classes with 'quantity' query. Get all if 'quantity' is not provided
         app.get( '/classes', async ( req, res ) => {
@@ -130,6 +131,26 @@ const run = async () => {
             const result = await classesCollection.aggregate( pipeline ).toArray();
             const totalEnrollments = result.length > 0 ? result[ 0 ] : { totalEnrollments: 0 };
             res.send( totalEnrollments );
+        } );
+
+        // ? Get flag by name
+        app.get( '/flags/single/:name', async ( req, res ) => {
+            const { name } = req.params;
+            
+            const pipeline = [
+                { $match: { name } },
+                { $project: { _id: 0, image: 1 } }
+            ];
+
+            const result = await flagsCollection.aggregate( pipeline ).toArray();;
+            console.log( result );
+
+            if ( result.length > 0 ) {
+                const { image } = result[ 0 ];
+                res.send( image );
+            } else {
+                res.status( 404 ).json( { error: 'Flag not found' } );
+            }
         } );
 
 
