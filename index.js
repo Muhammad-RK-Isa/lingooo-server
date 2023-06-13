@@ -107,12 +107,12 @@ const run = async () => {
             }
         } );
 
+        // ! ------------------------------Instructors Section Start------------------------------
         // ? Get all instructors
         app.get( '/instructors', async ( req, res ) => {
             const result = await usersCollection.find( { role: 'instructor' } ).toArray();
             res.send( result );
         } );
-
 
         // ? Get students count of an instructor
         app.get( '/instructors/students/count/:uid', async ( req, res ) => {
@@ -133,6 +133,14 @@ const run = async () => {
             const totalEnrollments = result.length > 0 ? result[ 0 ] : { totalEnrollments: 0 };
             res.send( totalEnrollments );
         } );
+
+        // ? Get all the classes of an instructor
+        app.get( '/instructors/classes/:uid', async ( req, res ) => {
+            const { uid } = req.params;
+            const result = await classesCollection.find( { 'instructor.uid': uid } ).toArray();
+            res.send( result );
+        } );
+
 
         // ? Get flag by name
         app.get( '/flags/single/:name', async ( req, res ) => {
@@ -167,6 +175,7 @@ const run = async () => {
                 res.status( 500 ).json( { error: 'Failed to retrieve flags' } );
             }
         } );
+        // ! ------------------------------Instructors Section Start------------------------------
 
         // ? Get all the reviews made by students
         app.get( '/reviews', async ( req, res ) => {
