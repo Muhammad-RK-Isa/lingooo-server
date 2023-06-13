@@ -94,7 +94,8 @@ const run = async () => {
                 email,
                 role: 'student',
                 sellectedClasses: [],
-                enrolledClasses: []
+                enrolledClasses: [],
+                reviews: []
             };
 
             const existingUser = await usersCollection.findOne( { uid } );
@@ -152,7 +153,6 @@ const run = async () => {
             }
         } );
 
-
         // ? Get all flags according to an instructor's classes' languages
         app.get( '/flags/instructor/:uid', async ( req, res ) => {
             const { uid } = req.params;
@@ -167,6 +167,32 @@ const run = async () => {
                 res.status( 500 ).json( { error: 'Failed to retrieve flags' } );
             }
         } );
+
+        // ? Get all the reviews made by students
+        app.get( '/reviews', async ( req, res ) => {
+            try {
+                const users = await usersCollection.find( { role: "student" } ).toArray();
+
+                // Combine review arrays into a single array of objects
+                const allReviews = users.flatMap( user => {
+                    if ( user.reviews && user.reviews.length > 0 ) {
+                        return user.reviews.map( review => ( {
+                            displayName: user.displayName,
+                            photoURL: user.photoURL,
+                            review
+                        } ) );
+                    }
+                    return [];
+                } );
+                res.send( allReviews );
+            } catch ( error ) {
+                console.error( 'Error retrieving reviews:', error );
+                res.status( 500 ).json( { error: 'Failed to retrieve reviews' } );
+            }
+        } );
+
+
+
 
         // Send a ping to confirm a successful connection
         await client.db( "admin" ).command( { ping: 1 } );
