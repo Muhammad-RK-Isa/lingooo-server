@@ -13,7 +13,7 @@ app.use( cors() );
 
 // ? -------------------------------Speed Limiter Start------------------------------
 // const speedLimiter = SlowDown( {
-    //     windowMs: 60 * 100,
+//     windowMs: 60 * 100,
 //     delayAfter: 0,
 //     delayMs: 500
 // } );
@@ -81,6 +81,58 @@ const run = async () => {
                 res.send( classes );
             }
         } );
+
+        // ? Add new user to database
+        app.post( '/auth/add_user', async ( req, res ) => {
+            const { uid, displayName, photoURL, email } = req.body;
+
+            const user = {
+                uid,
+                displayName,
+                photoURL,
+                email,
+                role: 'student',
+                sellectedClasses: [],
+                enrolledClasses: []
+            };
+
+            const existingUser = await usersCollection.findOne( { uid } );
+            if ( !existingUser ) {
+                const result = await usersCollection.insertOne( user );
+                res.send( { result } );
+            } else {
+                res.send( { error: true, message: 'User already exists' } );
+            }
+        } );
+
+        // ? Get all instructors
+        app.get( '/instructors', async ( req, res ) => {
+            const result = await usersCollection.find( { role: 'instructor' } ).toArray();
+            res.send( result );
+        } );
+
+
+        // ? Get students count of an instructor
+        app.get( '/instructors/students/count/:uid', async ( req, res ) => {
+            const { uid } = req.params;
+
+            const pipeline = [
+                { $match: { "instructor.uid": uid } },
+                {
+                    $group: {
+                        _id: null,
+                        totalEnrollments: { $sum: '$enrolled' }
+                    }
+                },
+                { $project: { _id: 0, totalEnrollments: 1 } }
+
+            ];
+            const result = await classesCollection.aggregate( pipeline ).toArray();
+            const totalEnrollments = result.length > 0 ? result[ 0 ] : { totalEnrollments: 0 };
+            res.send( totalEnrollments );
+        } );
+
+
 
         // Send a ping to confirm a successful connection
         await client.db( "admin" ).command( { ping: 1 } );
