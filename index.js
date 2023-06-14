@@ -272,7 +272,25 @@ const run = async () => {
 
             const classes = await Promise.all( classPromises );
 
-            console.log( classes ); // Array of classes
+            res.send( classes );
+        } );
+
+        app.get( '/users/students/enrolledClasses/:uid', verifyJWT, async ( req, res ) => {
+            const { uid } = req.params;
+            const pipeline = [
+                { $match: { uid } },
+                { $project: { _id: 0, enrolledClasses: 1 } }
+            ];
+            const result = await usersCollection.aggregate( pipeline ).toArray();
+
+            const classIds = result[ 0 ]?.selectedClasses || [];
+            const classPromises = classIds.map( async ( _id ) => {
+                const classs = await classesCollection.findOne( { _id: new ObjectId( _id ) } );
+                return classs;
+            } );
+
+            const classes = await Promise.all( classPromises );
+
             res.send( classes );
         } );
         // ----------------------------------Student Section------------------------------------
