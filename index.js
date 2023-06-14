@@ -4,6 +4,9 @@ import cors from 'cors';
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 import jwt from "jsonwebtoken";
 import SlowDown from "express-slow-down";
+import Stripe from 'stripe';
+
+const stripe = new Stripe( process.env.STRIPE_SECRET_KEY );
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -37,7 +40,6 @@ const verifyJWT = ( req, res, next ) => {
     const token = authorization.split( ' ' )[ 1 ];
 
     jwt.verify( token, process.env.ACCESS_TOKEN_SECRET, ( err, decoded ) => {
-        console.log( decoded );
         if ( err ) {
             return res.status( 403 ).send( { error: true, message: 'Forbidden' } );
         }
@@ -89,6 +91,41 @@ const run = async () => {
 
         // ?-----------------------User authorozation and data manipulation in mongodb userbase related api start-----------------------
 
+        // ? Role varification middlewares
+        const isAdmin = async ( req, res, next ) => {
+            const { uid } = req.body;
+            const pipeline = [
+                { $match: { uid } },
+                { $project: { _id: 0, role: 1 } }
+            ];
+            const result = await usersCollection.aggregate( pipeline ).toArray();
+            if ( result[ 0 ].role === 'admin' ) {
+                next();
+            }
+        };
+        const isStudent = async ( req, res, next ) => {
+            const { uid } = req.body;
+            const pipeline = [
+                { $match: { uid } },
+                { $project: { _id: 0, role: 1 } }
+            ];
+            const result = await usersCollection.aggregate( pipeline ).toArray();
+            if ( result[ 0 ].role === 'student' ) {
+                next();
+            }
+        };
+        const isInstructor = async ( req, res, next ) => {
+            const { uid } = req.body;
+            const pipeline = [
+                { $match: { uid } },
+                { $project: { _id: 0, role: 1 } }
+            ];
+            const result = await usersCollection.aggregate( pipeline ).toArray();
+            if ( result[ 0 ].role === 'instructor' ) {
+                next();
+            }
+        };
+
         // ? Verify user role and send client role to client side
         app.get( '/auth/verify_user_role/:uid', verifyJWT, async ( req, res ) => {
             const { uid } = req.params;
@@ -98,7 +135,6 @@ const run = async () => {
             ];
 
             const result = await usersCollection.aggregate( pipeline ).toArray();
-            console.log( result[ 0 ] );
             res.send( result[ 0 ] );
         } );
 
@@ -199,10 +235,35 @@ const run = async () => {
         // ! ------------------------------Instructors Section End------------------------------
 
         // ----------------------------------Student Section------------------------------------
+        app.patch( '/users/add_class', verifyJWT, isStudent, async ( req, res ) => {
+            const { uid, classId } = req.body;
+
+            try {
+                const result = await usersCollection.updateOne(
+                    { uid },
+                    { $addToSet: { selectedClasses: String( classId ) } }
+                );
+                if ( result.acknowledged && result.modifiedCount !== 0 ) {
+                    res.status( 200 ).json( { message: 'Selected classes updated successfully' } );
+                } else if ( result.modifiedCount === 0 ) {
+                    res.status( 409 ).json( { error: 'Class already selected' } );
+                }
+                else {
+                    res.status( 500 ).json( { error: 'Failed to update selected classes' } );
+                }
+            } catch ( error ) {
+                res.status( 500 ).json( { error: 'An error occurred while updating selected classes' } );
+            }
+        } );
+
         app.get( '/users/students/selectedClasses/:uid', verifyJWT, async ( req, res ) => {
             const { uid } = req.params;
-            const result = await usersCollection.findOne( { uid } ).project( { _id: 0, sellectedClasses: 1 } );
-            res.send( result.sellectedClasses );
+            const pipeline = [
+                { $match: { uid } },
+                { $project: { _id: 0, selectedClasses: 1 } }
+            ];
+            const result = await usersCollection.aggregate( pipeline ).toArray();
+            res.send( result[ 0 ].selectedClasses );
         } );
         // ----------------------------------Student Section------------------------------------
         // ? Get all the reviews made by students
@@ -227,6 +288,20 @@ const run = async () => {
                 res.status( 500 ).json( { error: 'Failed to retrieve reviews' } );
             }
         } );
+
+        // ----------------------------Payment-----------------------------------------
+        app.post( 'create-payment-intent', verifyJWT, async ( req, res ) => {
+            const { price } = req.body;
+            const amount = price * 100;
+            const paymentIntent = await stripe.paymentIntents.create( {
+                amount,
+                currency: 'usd',
+                payment_method_types: [ "card" ]
+            } );
+
+            res.send( { clientSecret: paymentIntent.client_secret } );
+        } );
+        // ----------------------------------Student Section------------------------------------
 
         // Send a ping to confirm a successful connection
         await client.db( "admin" ).command( { ping: 1 } );
