@@ -31,9 +31,13 @@ const delayMiddleware = ( req, res, next ) => {
 // ! ================================ JWT Auth Start =================================
 const verifyJWT = ( req, res, next ) => {
     const { authorization } = req.headers;
+    if ( !authorization ) {
+        return res.status( 401 ).send( { error: true, message: 'Unauthorized' } );
+    }
     const token = authorization.split( ' ' )[ 1 ];
 
     jwt.verify( token, process.env.ACCESS_TOKEN_SECRET, ( err, decoded ) => {
+        console.log( decoded );
         if ( err ) {
             return res.status( 403 ).send( { error: true, message: 'Forbidden' } );
         }
@@ -83,6 +87,21 @@ const run = async () => {
             }
         } );
 
+        // ?-----------------------User authorozation and data manipulation in mongodb userbase related api start-----------------------
+
+        // ? Verify user role and send client role to client side
+        app.get( '/auth/verify_user_role/:uid', verifyJWT, async ( req, res ) => {
+            const { uid } = req.params;
+            const pipeline = [
+                { $match: { uid } },
+                { $project: { _id: 0, role: 1 } }
+            ];
+
+            const result = await usersCollection.aggregate( pipeline ).toArray();
+            console.log( result[ 0 ] );
+            res.send( result[ 0 ] );
+        } );
+
         // ? Add new user to database
         app.post( '/auth/add_user', async ( req, res ) => {
             const { uid, displayName, photoURL, email } = req.body;
@@ -106,6 +125,8 @@ const run = async () => {
                 res.send( { error: true, message: 'User already exists' } );
             }
         } );
+        // ?-----------------------User authorozation and data manipulation in mongodb userbase related api end-----------------------
+
 
         // ! ------------------------------Instructors Section Start------------------------------
         // ? Get all instructors
@@ -175,8 +196,15 @@ const run = async () => {
                 res.status( 500 ).json( { error: 'Failed to retrieve flags' } );
             }
         } );
-        // ! ------------------------------Instructors Section Start------------------------------
+        // ! ------------------------------Instructors Section End------------------------------
 
+        // ----------------------------------Student Section------------------------------------
+        app.get( '/users/students/selectedClasses/:uid', verifyJWT, async ( req, res ) => {
+            const { uid } = req.params;
+            const result = await usersCollection.findOne( { uid } ).project( { _id: 0, sellectedClasses: 1 } );
+            res.send( result.sellectedClasses );
+        } );
+        // ----------------------------------Student Section------------------------------------
         // ? Get all the reviews made by students
         app.get( '/reviews', async ( req, res ) => {
             try {
@@ -200,9 +228,6 @@ const run = async () => {
             }
         } );
 
-
-
-
         // Send a ping to confirm a successful connection
         await client.db( "admin" ).command( { ping: 1 } );
         console.log( "Pinged your deployment. You successfully connected to MongoDB!" );
@@ -212,8 +237,6 @@ const run = async () => {
     }
 };
 run().catch( console.dir );
-
-
 
 // ! ------------------------------ MongoDB End ---------------------------------------
 
