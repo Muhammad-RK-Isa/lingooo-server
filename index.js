@@ -263,7 +263,17 @@ const run = async () => {
                 { $project: { _id: 0, selectedClasses: 1 } }
             ];
             const result = await usersCollection.aggregate( pipeline ).toArray();
-            res.send( result[ 0 ].selectedClasses );
+
+            const classIds = result[ 0 ]?.selectedClasses || [];
+            const classPromises = classIds.map( async ( _id ) => {
+                const classs = await classesCollection.findOne( { _id: new ObjectId( _id ) } );
+                return classs;
+            } );
+
+            const classes = await Promise.all( classPromises );
+
+            console.log( classes ); // Array of classes
+            res.send( classes );
         } );
         // ----------------------------------Student Section------------------------------------
         // ? Get all the reviews made by students
