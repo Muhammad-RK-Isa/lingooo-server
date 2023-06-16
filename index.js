@@ -80,15 +80,49 @@ const run = async () => {
 
         // ? Retrieve classes with 'quantity' query. Get all if 'quantity' is not provided
         app.get( '/classes', async ( req, res ) => {
-            const { quantity } = req.query;
-            if ( quantity ) {
-                const classes = await classesCollection.find().limit( parseInt( quantity ) ).toArray();
-                res.send( classes );
-            } else {
-                const classes = await classesCollection.find().toArray();
-                res.send( classes );
+            const { quantity, filter } = req.query;
+
+            let pipeline = [];
+
+            if ( filter ) {
+                switch ( filter.filter ) {
+                    case 'Sort by name A-Z':
+                        pipeline.push( { $sort: { title: 1 } } );
+                        break;
+                    case 'Sort by name Z-A':
+                        pipeline.push( { $sort: { title: -1 } } );
+                        break;
+                    case 'Sort by price high to low':
+                        pipeline.push( { $sort: { price: -1 } } );
+                        break;
+                    case 'Sort by price low to high':
+                        pipeline.push( { $sort: { price: 1 } } );
+                        break;
+                    case 'Sort by popularity ascending':
+                        pipeline.push( { $sort: { enrolled: 1 } } );
+                        break;
+                    case 'Sort by popularity descending':
+                        pipeline.push( { $sort: { enrolled: -1 } } );
+                        break;
+                    case 'Sort by availability ascending':
+                        pipeline.push( { $sort: { availableSeats: 1 } } );
+                        break;
+                    case 'Sort by availability descending':
+                        pipeline.push( { $sort: { availableSeats: -1 } } );
+                        break;
+                    default:
+                        break;
+                }
             }
+
+            if ( quantity ) {
+                pipeline.push( { $limit: parseInt( quantity ) } );
+            }
+
+            const classes = await classesCollection.aggregate( pipeline ).toArray();
+            res.send( classes );
         } );
+
 
         // ?-----------------------User authorozation and data manipulation in mongodb userbase related api start-----------------------
 
