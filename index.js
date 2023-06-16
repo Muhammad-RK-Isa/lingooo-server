@@ -43,6 +43,7 @@ const verifyJWT = ( req, res, next ) => {
         if ( err ) {
             return res.status( 403 ).send( { error: true, message: 'Forbidden' } );
         }
+        req.decoded = decoded;
         next();
     } );
 };
@@ -92,26 +93,20 @@ const run = async () => {
         // ?-----------------------User authorozation and data manipulation in mongodb userbase related api start-----------------------
 
         // ? Role varification middlewares
-        const isAdmin = async ( req, res, next ) => {
-            const { uid } = req.body;
-            const pipeline = [
-                { $match: { uid } },
-                { $project: { _id: 0, role: 1 } }
-            ];
-            const result = await usersCollection.aggregate( pipeline ).toArray();
-            if ( result[ 0 ].role === 'admin' ) {
-                next();
-            }
-        };
         const isStudent = async ( req, res, next ) => {
-            const { uid } = req.body;
+            const uid = req.decoded;
             const pipeline = [
                 { $match: { uid } },
                 { $project: { _id: 0, role: 1 } }
             ];
-            const result = await usersCollection.aggregate( pipeline ).toArray();
-            if ( result[ 0 ].role === 'student' ) {
-                next();
+            try {
+                const result = await usersCollection.aggregate( pipeline ).toArray();
+                if ( result[ 0 ]?.role === 'student' ) {
+                    next();
+                }
+            } catch ( error ) {
+                console.log( 'not a student' );
+                res.status( 403 ).send( 'Forbidden' );
             }
         };
         const isInstructor = async ( req, res, next ) => {
@@ -120,9 +115,28 @@ const run = async () => {
                 { $match: { uid } },
                 { $project: { _id: 0, role: 1 } }
             ];
-            const result = await usersCollection.aggregate( pipeline ).toArray();
-            if ( result[ 0 ].role === 'instructor' ) {
-                next();
+            try {
+                const result = await usersCollection.aggregate( pipeline ).toArray();
+                if ( result[ 0 ]?.role === 'instructor' ) {
+                    next();
+                }
+            } catch ( error ) {
+                res.status( 403 ).send( 'Forbidden' );
+            }
+        };
+        const isAdmin = async ( req, res, next ) => {
+            const { uid } = req.body;
+            const pipeline = [
+                { $match: { uid } },
+                { $project: { _id: 0, role: 1 } }
+            ];
+            try {
+                const result = await usersCollection.aggregate( pipeline ).toArray();
+                if ( result[ 0 ]?.role === 'admin' ) {
+                    next();
+                }
+            } catch ( error ) {
+                res.status( 403 ).send( 'Forbidden' );
             }
         };
 
@@ -293,7 +307,22 @@ const run = async () => {
 
             res.send( classes );
         } );
-        // ----------------------------------Student Section------------------------------------
+        // ? Get all the reviews made by a student
+        app.get( '/student/reviews', verifyJWT, isStudent, async ( req, res ) => {
+            const uid = req.decoded;
+            try {
+                const pipeline = [
+                    { $match: { uid } },
+                    { $project: { _id: 0, reviews: 1 } }
+                ];
+                const reviews = await usersCollection.aggregate( pipeline ).toArray();
+                res.send( reviews[ 0 ].reviews );
+            } catch ( error ) {
+                console.error( 'Error retrieving reviews:', error );
+                res.status( 500 ).json( { error: 'Failed to retrieve reviews' } );
+            }
+        } );
+
         // ? Get all the reviews made by students
         app.get( '/reviews', async ( req, res ) => {
             try {
@@ -316,6 +345,27 @@ const run = async () => {
                 res.status( 500 ).json( { error: 'Failed to retrieve reviews' } );
             }
         } );
+
+        // ? Delete a selected class
+        app.delete( '/student/selected_classes/:_id', verifyJWT, isStudent, async ( req, res ) => {
+            const uid = req.decoded;
+            const _id = req.params._id;
+
+            try {
+                const result = await usersCollection.updateOne(
+                    { uid },
+                    { $pull: { selectedClasses: _id } }
+                );
+                if ( result.modifiedCount === 1 ) {
+                    res.status( 200 ).json( { message: 'Selected class deleted successfully' } );
+                } else {
+                    res.status( 409 ).json( { error: 'The selected class not found' } );
+                }
+            } catch ( error ) {
+                res.status( 500 ).json( { error: 'An error occurred while deleting the selected class' } );
+            }
+        } );
+        // ----------------------------------Student Section End------------------------------------
 
         // ----------------------------Payment-----------------------------------------
         app.post( 'create-payment-intent', verifyJWT, async ( req, res ) => {
