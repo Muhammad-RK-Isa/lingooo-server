@@ -6,13 +6,15 @@ import jwt from "jsonwebtoken";
 import SlowDown from "express-slow-down";
 import Stripe from 'stripe';
 
-const stripe = new Stripe( process.env.STRIPE_SECRET_KEY );
 
 const app = express();
 const port = process.env.PORT || 5000;
 dotenv.config();
 app.use( express.json() );
 app.use( cors() );
+
+const apiKey = process.env.STRIPE_SECRET_KEY;
+const stripe = new Stripe( apiKey );
 
 // ? -------------------------------Speed Limiter Start------------------------------
 // const speedLimiter = SlowDown( {
@@ -77,6 +79,7 @@ const run = async () => {
         const classesCollection = db.collection( "classes" );
         const usersCollection = db.collection( "users" );
         const flagsCollection = db.collection( "flags" );
+        const paymentsCollection = db.collection( 'payments' );
 
         // ? Retrieve classes with 'quantity' query. Get all if 'quantity' is not provided
         app.get( '/classes', async ( req, res ) => {
@@ -243,9 +246,8 @@ const run = async () => {
         app.get( '/instructors/classes/:uid', async ( req, res ) => {
             const { uid } = req.params;
             const result = await classesCollection.find( { 'instructor.uid': uid } ).toArray();
-            res.send( result );
+            res.status( 200 ).send( result );
         } );
-
 
         // ? Get flag by name
         app.get( '/flags/single/:name', async ( req, res ) => {
@@ -355,7 +357,7 @@ const run = async () => {
             ];
             const result = await usersCollection.aggregate( pipeline ).toArray();
 
-            const classIds = result[ 0 ]?.selectedClasses || [];
+            const classIds = result[ 0 ]?.enrolledClasses || [];
             const classPromises = classIds.map( async ( _id ) => {
                 const classs = await classesCollection.findOne( { _id: new ObjectId( _id ) } );
                 return classs;
@@ -427,13 +429,11 @@ const run = async () => {
             }
         } );
 
-
-
         // ----------------------------------Student Section End------------------------------------
 
-        // ------------------------------------Payment Start----------------------------------------------
-        app.post( 'create-payment-intent', verifyJWT, async ( req, res ) => {
 
+        // ------------------------------------Payment Start----------------------------------------------
+        app.post( '/create-payment-intent', verifyJWT, isStudent, async ( req, res ) => {
             const { price } = req.body;
             const amount = price * 100;
             const paymentIntent = await stripe.paymentIntents.create( {
@@ -441,9 +441,41 @@ const run = async () => {
                 currency: 'usd',
                 payment_method_types: [ "card" ]
             } );
-
             res.send( { clientSecret: paymentIntent.client_secret } );
         } );
+
+        app.post( '/payments', verifyJWT, isStudent, async ( req, res ) => {
+            try {
+                const { paymentDetails } = req.body;
+                const result = await paymentsCollection.insertOne( paymentDetails );
+
+                if ( result.acknowledged ) {
+                    // Update the user's selectedClasses and enrolledClasses arrays
+                    const updateResult = await usersCollection.updateOne(
+                        { uid: paymentDetails.uid },
+                        {
+                            $pull: { selectedClasses: paymentDetails.classID },
+                            $addToSet: { enrolledClasses: paymentDetails.classID }
+                        }
+                    );
+                    if ( updateResult.modifiedCount === 1 ) {
+                        await classesCollection.updateOne(
+                            { _id: new ObjectId( paymentDetails.classID ) },
+                            { $inc: { availableSeats: -1 } }
+                        );
+                        res.status( 200 ).send( { message: 'Payment Stored' } );
+                    } else {
+                        res.status( 500 ).send( { message: 'Could not update user data' } );
+                    }
+                } else {
+                    res.status( 500 ).send( { message: 'Could not store payment' } );
+                }
+            } catch ( error ) {
+                res.status( 500 ).send( { message: 'An error occurred' } );
+            }
+        } );
+
+
         //------ --------------------------------Payment End----------------------------------------------
 
         // ? Retrieve individual class info/data
