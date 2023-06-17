@@ -32,6 +32,12 @@ const delayMiddleware = ( req, res, next ) => {
 
 
 // ! ================================ JWT Auth Start =================================
+app.post( '/auth/request_access_token', ( req, res ) => {
+    const { uid } = req.body;
+    const token = jwt.sign( uid, process.env.ACCESS_TOKEN_SECRET );
+    res.send( { token } );
+} );
+
 const verifyJWT = ( req, res, next ) => {
     const { authorization } = req.headers;
     if ( !authorization ) {
@@ -47,12 +53,6 @@ const verifyJWT = ( req, res, next ) => {
         next();
     } );
 };
-
-app.post( '/auth/request_access_token', ( req, res ) => {
-    const { uid } = req.body;
-    const token = jwt.sign( uid, process.env.ACCESS_TOKEN_SECRET );
-    res.send( { token } );
-} );
 
 // ! ------------------------------- JWT Auth End -------------------------------------
 
@@ -429,7 +429,7 @@ run().catch( console.dir );
 
 
 
-app.get( '/', ( req, res ) => {
+app.get( '/', verifyJWT, ( req, res ) => {
     res.send( "Hello from Lingooo's server" );
 } );
 
