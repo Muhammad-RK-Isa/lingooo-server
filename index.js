@@ -283,6 +283,28 @@ const run = async () => {
         // ! ------------------------------Instructors Section End------------------------------
 
         // ----------------------------------Student Section------------------------------------
+
+        // ? Retrieve selected classes of a student
+        app.get( '/users/students/selectedClasses/:uid', verifyJWT, async ( req, res ) => {
+            const { uid } = req.params;
+            const pipeline = [
+                { $match: { uid } },
+                { $project: { _id: 0, selectedClasses: 1 } }
+            ];
+            const result = await usersCollection.aggregate( pipeline ).toArray();
+
+            const classIds = result[ 0 ]?.selectedClasses || [];
+            const classPromises = classIds.map( async ( _id ) => {
+                const classs = await classesCollection.findOne( { _id: new ObjectId( _id ) } );
+                return classs;
+            } );
+
+            const classes = await Promise.all( classPromises );
+
+            res.send( classes );
+        } );
+
+        // ? Update selected classes of a student
         app.patch( '/users/add_class', verifyJWT, isStudent, async ( req, res ) => {
             const { uid, classId } = req.body;
 
@@ -304,25 +326,27 @@ const run = async () => {
             }
         } );
 
-        app.get( '/users/students/selectedClasses/:uid', verifyJWT, async ( req, res ) => {
-            const { uid } = req.params;
-            const pipeline = [
-                { $match: { uid } },
-                { $project: { _id: 0, selectedClasses: 1 } }
-            ];
-            const result = await usersCollection.aggregate( pipeline ).toArray();
+        // ? Delete a selected class
+        app.delete( '/users/student/selected_classes/:_id', verifyJWT, isStudent, async ( req, res ) => {
+            const uid = req.decoded;
+            const _id = req.params._id;
 
-            const classIds = result[ 0 ]?.selectedClasses || [];
-            const classPromises = classIds.map( async ( _id ) => {
-                const classs = await classesCollection.findOne( { _id: new ObjectId( _id ) } );
-                return classs;
-            } );
-
-            const classes = await Promise.all( classPromises );
-
-            res.send( classes );
+            try {
+                const result = await usersCollection.updateOne(
+                    { uid },
+                    { $pull: { selectedClasses: _id } }
+                );
+                if ( result.modifiedCount === 1 ) {
+                    res.status( 200 ).json( { message: 'Selected class deleted successfully' } );
+                } else {
+                    res.status( 409 ).json( { error: 'The selected class not found' } );
+                }
+            } catch ( error ) {
+                res.status( 500 ).json( { error: 'An error occurred while deleting the selected class' } );
+            }
         } );
 
+        // ? Retrieve enrolled classes of a student
         app.get( '/users/students/enrolledClasses/:uid', verifyJWT, async ( req, res ) => {
             const { uid } = req.params;
             const pipeline = [
@@ -341,6 +365,29 @@ const run = async () => {
 
             res.send( classes );
         } );
+
+        // ? Check if a student is enrolled in a class. If not, send the class data
+        app.get( '/users/students/enrolledClasses/check_existing/:_id', verifyJWT, isStudent, async ( req, res ) => {
+            const { _id } = req.params;
+            const { uid } = req.decoded;
+
+            const pipeline = [
+                { $match: { uid, enrolledClasses: { $in: [ _id ] } } }
+            ];
+
+            const result = await usersCollection.aggregate( pipeline ).toArray();
+
+            if ( result.length > 0 ) {
+                res.status( 409 ).json( { message: 'Already enrolled' } );
+            } else {
+                const classs = await classesCollection.findOne( { _id: new ObjectId( _id ) } );
+                res.status( 200 ).json( classs );
+            }
+        } );
+
+
+        // ? Update enrolled classes
+
         // ? Get all the reviews made by a student
         app.get( '/student/reviews', verifyJWT, isStudent, async ( req, res ) => {
             const uid = req.decoded;
@@ -380,29 +427,13 @@ const run = async () => {
             }
         } );
 
-        // ? Delete a selected class
-        app.delete( '/student/selected_classes/:_id', verifyJWT, isStudent, async ( req, res ) => {
-            const uid = req.decoded;
-            const _id = req.params._id;
 
-            try {
-                const result = await usersCollection.updateOne(
-                    { uid },
-                    { $pull: { selectedClasses: _id } }
-                );
-                if ( result.modifiedCount === 1 ) {
-                    res.status( 200 ).json( { message: 'Selected class deleted successfully' } );
-                } else {
-                    res.status( 409 ).json( { error: 'The selected class not found' } );
-                }
-            } catch ( error ) {
-                res.status( 500 ).json( { error: 'An error occurred while deleting the selected class' } );
-            }
-        } );
+
         // ----------------------------------Student Section End------------------------------------
 
-        // ----------------------------Payment-----------------------------------------
+        // ------------------------------------Payment Start----------------------------------------------
         app.post( 'create-payment-intent', verifyJWT, async ( req, res ) => {
+
             const { price } = req.body;
             const amount = price * 100;
             const paymentIntent = await stripe.paymentIntents.create( {
@@ -413,7 +444,14 @@ const run = async () => {
 
             res.send( { clientSecret: paymentIntent.client_secret } );
         } );
-        // ----------------------------------Student Section------------------------------------
+        //------ --------------------------------Payment End----------------------------------------------
+
+        // ? Retrieve individual class info/data
+        app.get( '/classes/:_id', async ( req, res ) => {
+            const { _id } = req.params;
+            const classData = await classesCollection.findOne( { _id: new ObjectId( _id ) } );
+            res.send( classData );
+        } );
 
         // Send a ping to confirm a successful connection
         await client.db( "admin" ).command( { ping: 1 } );
